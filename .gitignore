@@ -23,3 +23,6 @@ lib/
 .aider*
 GEMINI.md
 .env
+
+# Configuration with secrets
+src/config.h

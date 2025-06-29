@@ -27,13 +27,20 @@ The onboard LED (GPIO 33) provides visual feedback:
 
 ## Configuration
 
-1. Copy `src/config.h` and update the following values:
+1. Copy the configuration template:
+   ```bash
+   cp src/config.h.template src/config.h
+   ```
+
+2. Edit `src/config.h` with your actual values:
    ```cpp
    #define WIFI_SSID "your_wifi_network"
    #define WIFI_PASSWORD "your_wifi_password"
    #define API_URL "http://your-backend-url/?action=checkin"
    #define API_TOKEN "your_api_token"
    ```
+
+   **Important**: `src/config.h` is gitignored to prevent accidental commits of secrets.
 
 ## Backend API
 
