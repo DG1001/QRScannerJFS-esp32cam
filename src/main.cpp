@@ -28,9 +28,10 @@
 
 #define LED_GPIO_NUM      33 // For AI-Thinker, this is the flash LED
 
-#include <ESP32QRCodeReader.h>
-
 // LED blink-Funktion: kurz HIGH-LOW wiederholen
+// 2 short blinks for OK/success
+// 3 short blinks for "already seen"
+// 5 short blinks for an error
 void blinkLed(int times) {
   for (int i = 0; i < times; i++) {
     digitalWrite(LED_GPIO_NUM, HIGH);
@@ -40,46 +41,17 @@ void blinkLed(int times) {
   }
 }
 
+ESP32QRCodeReader reader;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Hello from ESP32-CAM!");
 
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG; // Using JPEG for now, can change to GRAYSCALE later for QR
-  config.frame_size = FRAMESIZE_QVGA; // QVGA (320x240) for QR code scanning
-  config.jpeg_quality = 12; // 0-63 lower number means higher quality
-  config.fb_count = 1;
+  reader.setup();
+  Serial.println("Setup finished");
 
-  // Camera init
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    return;
-  }
-
-  // QR-Reader initialisieren
-  ESP32QRCodeReader qrReader(CAMERA_MODEL_AI_THINKER);
-  qrReader.setup();
-  qrReader.beginOnCore(1);
+  reader.begin();
+  Serial.println("Camera started");
 
   // Configure flash LED
   pinMode(LED_GPIO_NUM, OUTPUT);
@@ -97,55 +69,49 @@ void setup() {
 }
 
 void loop() {
-  // QR-Code dekodieren
   struct QRCodeData qrCodeData;
-  String decoded = "";
-  if (!qrReader.receiveQrCode(&qrCodeData, 100)) {
-    Serial.println("No QR code found");
-    blinkLed(4);
-    delay(5000);
-    return;
+
+  if (reader.receiveQrCode(&qrCodeData, 100)) {
+    Serial.println("Found QR code");
+    if (qrCodeData.valid) {
+      String decoded = String((const char*)qrCodeData.payload);
+      Serial.printf("Decoded QR: %s\n", decoded.c_str());
+
+      // Anfrage an Backend senden
+      HTTPClient http;
+      http.begin(API_URL);
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("X-API-Token", API_TOKEN);
+
+      StaticJsonDocument<200> doc;
+      doc["id"] = decoded;
+      String body;
+      serializeJson(doc, body);
+
+      int httpCode = http.POST(body);
+      String payload = http.getString();
+      http.end();
+
+      Serial.printf("HTTP %d: %s\n", httpCode, payload.c_str());
+
+      String status;
+      DeserializationError err = deserializeJson(doc, payload);
+      if (!err && doc.containsKey("status")) {
+        status = doc["status"].as<String>();
+      }
+
+      if (httpCode == 200 && status == "ok") {
+        blinkLed(2); // 2 blinks for OK/success
+      } else if (status == "already registered") {
+        blinkLed(3); // 3 blinks for "already seen"
+      } else {
+        blinkLed(5); // 5 blinks for error
+      }
+    } else {
+      Serial.print("Invalid: ");
+      // Serial.println(qrCodeData.message); // This is not available in the struct
+      blinkLed(5); // 5 blinks for error
+    }
   }
-  if (!qrCodeData.valid) {
-    Serial.println("QR invalid");
-    blinkLed(4);
-    delay(5000);
-    return;
-  }
-  decoded = String((const char*)qrCodeData.payload);
-
-  Serial.printf("Decoded QR: %s\n", decoded.c_str());
-
-  // Anfrage an Backend senden
-  HTTPClient http;
-  http.begin(API_URL);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Token", API_TOKEN);
-
-  StaticJsonDocument<200> doc;
-  doc["id"] = decoded;
-  String body;
-  serializeJson(doc, body);
-
-  int httpCode = http.POST(body);
-  String payload = http.getString();
-  http.end();
-
-  Serial.printf("HTTP %d: %s\n", httpCode, payload.c_str());
-
-  String status;
-  DeserializationError err = deserializeJson(doc, payload);
-  if (!err && doc.containsKey("status")) {
-    status = doc["status"].as<String>();
-  }
-
-  if (httpCode == 200 && status == "ok") {
-    blinkLed(1);
-  } else if (status == "already registered") {
-    blinkLed(2);
-  } else {
-    blinkLed(4);
-  }
-
   delay(5000); // Nächster Scan
 }

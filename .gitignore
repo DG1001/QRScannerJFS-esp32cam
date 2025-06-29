@@ -1,0 +1,25 @@
+# PlatformIO
+.pio/
+.vscode/
+/firmware.bin
+
+# Build files
+.build/
+build/
+
+# Dependencies
+lib/
+
+# Logs
+*.log
+
+# VS Code
+.vscode/
+
+# Other
+.DS_Store
+*.bak
+*.tmp
+.aider*
+GEMINI.md
+.env
