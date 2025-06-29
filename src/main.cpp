@@ -26,7 +26,7 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-#define LED_GPIO_NUM      33 // For AI-Thinker, this is the flash LED
+#define LED_GPIO_NUM      4 // For AI-Thinker, this is the flash LED
 
 // LED blink-Funktion: kurz HIGH-LOW wiederholen
 // 2 short blinks for OK/success
@@ -78,6 +78,14 @@ void loop() {
       String decoded = String((const char*)qrCodeData.payload);
       Serial.printf("Decoded QR: %s\n", decoded.c_str());
 
+      // Extract ID from URL (part after last '/')
+      String id = decoded;
+      int lastSlash = decoded.lastIndexOf('/');
+      if (lastSlash != -1 && lastSlash < decoded.length() - 1) {
+        id = decoded.substring(lastSlash + 1);
+      }
+      Serial.printf("Extracted ID: %s\n", id.c_str());
+
       // Anfrage an Backend senden
       HTTPClient http;
       http.begin(API_URL);
@@ -85,7 +93,7 @@ void loop() {
       http.addHeader("X-API-Token", API_TOKEN);
 
       StaticJsonDocument<200> doc;
-      doc["id"] = decoded;
+      doc["id"] = id;
       String body;
       serializeJson(doc, body);
 
@@ -102,9 +110,9 @@ void loop() {
       }
 
       if (httpCode == 200 && status == "ok") {
-        blinkLed(2); // 2 blinks for OK/success
+        blinkLed(1); // 1 blinks for OK/success
       } else if (status == "already registered") {
-        blinkLed(3); // 3 blinks for "already seen"
+        blinkLed(2); // 2 blinks for "already seen"
       } else if (status == "id not known") {
         blinkLed(4); // 4 blinks for "id not known"
       } else {
@@ -113,8 +121,8 @@ void loop() {
     } else {
       Serial.print("Invalid: ");
       // Serial.println(qrCodeData.message); // This is not available in the struct
-      blinkLed(5); // 5 blinks for error
+      //blinkLed(5); // 5 blinks for error
     }
   }
-  delay(5000); // Nächster Scan
+  delay(200); // Nächster Scan
 }

@@ -20,8 +20,8 @@ ESP32-CAM firmware for scanning QR codes and checking them in via a backend API.
 
 The onboard LED (GPIO 33) provides visual feedback:
 
-- **2 blinks**: Successful check-in
-- **3 blinks**: ID already registered
+- **1 blinks**: Successful check-in
+- **2 blinks**: ID already registered
 - **4 blinks**: ID not known by backend
 - **5 blinks**: Error (invalid QR code, network error, etc.)
 
