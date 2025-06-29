@@ -1,5 +1,11 @@
 #include <Arduino.h>
 #include "esp_camera.h"
+#include "config.h"
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <QrDecoder.h>
 
 // CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM     32
@@ -21,6 +27,16 @@
 #define PCLK_GPIO_NUM     22
 
 #define LED_GPIO_NUM      33 // For AI-Thinker, this is the flash LED
+
+// LED blink-Funktion: kurz HIGH-LOW wiederholen
+void blinkLed(int times) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(LED_GPIO_NUM, HIGH);
+    delay(100);
+    digitalWrite(LED_GPIO_NUM, LOW);
+    delay(100);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -61,17 +77,80 @@ void setup() {
   // Configure flash LED
   pinMode(LED_GPIO_NUM, OUTPUT);
   digitalWrite(LED_GPIO_NUM, LOW); // Turn off flash LED initially
+
+  // WiFi-Verbindung herstellen
+  Serial.printf("Connecting to WiFi: %s\n", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected, IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void loop() {
-  // Your QR scanning logic will go here
-  // For now, let's just capture a frame and print its size
+  // Frame aufnehmen
   camera_fb_t * fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("Camera capture failed");
+    Serial.println("Camera capture failed, retry with flash");
+    // Versuche mit Flash
+    digitalWrite(LED_GPIO_NUM, HIGH);
+    delay(100);
+    fb = esp_camera_fb_get();
+    digitalWrite(LED_GPIO_NUM, LOW);
+    if (!fb) {
+      Serial.println("Second capture failed, blinking error");
+      blinkLed(4);
+      delay(5000);
+      return;
+    }
+  }
+
+  // QR-Code dekodieren
+  QrDecoder qr;
+  String decoded = qr.decode(fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+
+  if (decoded.length() == 0) {
+    Serial.println("QR decode failed");
+    blinkLed(4);
+    delay(5000);
     return;
   }
-  Serial.printf("Frame captured: %d bytes\n", fb->len);
-  esp_camera_fb_return(fb);
-  delay(5000); // Capture every 5 seconds for testing
+
+  Serial.printf("Decoded QR: %s\n", decoded.c_str());
+
+  // Anfrage an Backend senden
+  HTTPClient http;
+  http.begin(API_URL);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Token", API_TOKEN);
+
+  StaticJsonDocument<200> doc;
+  doc["id"] = decoded;
+  String body;
+  serializeJson(doc, body);
+
+  int httpCode = http.POST(body);
+  String payload = http.getString();
+  http.end();
+
+  Serial.printf("HTTP %d: %s\n", httpCode, payload.c_str());
+
+  String status;
+  DeserializationError err = deserializeJson(doc, payload);
+  if (!err && doc.containsKey("status")) {
+    status = doc["status"].as<String>();
+  }
+
+  if (httpCode == 200 && status == "ok") {
+    blinkLed(1);
+  } else if (status == "already registered") {
+    blinkLed(2);
+  } else {
+    blinkLed(4);
+  }
+
+  delay(5000); // Nächster Scan
 }
