@@ -30,7 +30,8 @@
 
 // LED blink-Funktion: kurz HIGH-LOW wiederholen
 // 2 short blinks for OK/success
-// 3 short blinks for "already seen"
+// 3 short blinks for "already registered"
+// 4 short blinks for "id not known"
 // 5 short blinks for an error
 void blinkLed(int times) {
   for (int i = 0; i < times; i++) {
@@ -104,6 +105,8 @@ void loop() {
         blinkLed(2); // 2 blinks for OK/success
       } else if (status == "already registered") {
         blinkLed(3); // 3 blinks for "already seen"
+      } else if (status == "id not known") {
+        blinkLed(4); // 4 blinks for "id not known"
       } else {
         blinkLed(5); // 5 blinks for error
       }
