@@ -118,6 +118,7 @@ void loop() {
       } else {
         blinkLed(5); // 5 blinks for error
       }
+      delay(5000); // Nächster Scan
     } else {
       Serial.print("Invalid: ");
       // Serial.println(qrCodeData.message); // This is not available in the struct
