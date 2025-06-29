@@ -5,7 +5,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <QrDecoder.h>
+#include <ESP32QRCodeReader.h>
 
 // CAMERA_MODEL_AI_THINKER
 #define PWDN_GPIO_NUM     32
@@ -27,6 +27,8 @@
 #define PCLK_GPIO_NUM     22
 
 #define LED_GPIO_NUM      33 // For AI-Thinker, this is the flash LED
+
+#include <ESP32QRCodeReader.h>
 
 // LED blink-Funktion: kurz HIGH-LOW wiederholen
 void blinkLed(int times) {
@@ -74,6 +76,11 @@ void setup() {
     return;
   }
 
+  // QR-Reader initialisieren
+  ESP32QRCodeReader qrReader(CAMERA_MODEL_AI_THINKER);
+  qrReader.setup();
+  qrReader.beginOnCore(1);
+
   // Configure flash LED
   pinMode(LED_GPIO_NUM, OUTPUT);
   digitalWrite(LED_GPIO_NUM, LOW); // Turn off flash LED initially
@@ -90,34 +97,22 @@ void setup() {
 }
 
 void loop() {
-  // Frame aufnehmen
-  camera_fb_t * fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Camera capture failed, retry with flash");
-    // Versuche mit Flash
-    digitalWrite(LED_GPIO_NUM, HIGH);
-    delay(100);
-    fb = esp_camera_fb_get();
-    digitalWrite(LED_GPIO_NUM, LOW);
-    if (!fb) {
-      Serial.println("Second capture failed, blinking error");
-      blinkLed(4);
-      delay(5000);
-      return;
-    }
-  }
-
   // QR-Code dekodieren
-  QrDecoder qr;
-  String decoded = qr.decode(fb->buf, fb->len);
-  esp_camera_fb_return(fb);
-
-  if (decoded.length() == 0) {
-    Serial.println("QR decode failed");
+  struct QRCodeData qrCodeData;
+  String decoded = "";
+  if (!qrReader.receiveQrCode(&qrCodeData, 100)) {
+    Serial.println("No QR code found");
     blinkLed(4);
     delay(5000);
     return;
   }
+  if (!qrCodeData.valid) {
+    Serial.println("QR invalid");
+    blinkLed(4);
+    delay(5000);
+    return;
+  }
+  decoded = String((const char*)qrCodeData.payload);
 
   Serial.printf("Decoded QR: %s\n", decoded.c_str());
 
